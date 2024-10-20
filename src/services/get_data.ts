@@ -22,21 +22,13 @@ type Pool = {
     }
 }
 
-const URL = `https://test-api-v3.balancer.fi/?query=query {
-    poolGetPool(id:"${process.env.POOL_ADDRESS}", chain:SEPOLIA){
-      poolTokens {
-        balance
-        name
-        address
-        priceRate
-      }
-      dynamicData{
-        totalLiquidity
-        volume24h
-        lifetimeVolume
-  }}}`
-
 async function getData(URL: string) {
+    var impermanent_loss = 0;
+    var volatility = 0;
+    var volume24h = 0;
+    var totalLiquidity = 0;
+    var lifetimeVolume = 0;
+
     try {
         // prices volatility of the last 30 days
         const current_date = moment();
@@ -46,7 +38,7 @@ async function getData(URL: string) {
                 date: { 
                     gt: current_date.subtract(30, 'days').toDate() //check this
                 },
-                tokenId: 1
+                tokenId: (await prisma.token.findFirst())?.id
             }
         })
         const prices2 = await prisma.price.findMany({
@@ -55,54 +47,69 @@ async function getData(URL: string) {
                 date: { 
                     gt: current_date.subtract(30, 'days').toDate()
                 },
-                tokenId: 2
+                tokenId: (await prisma.token.findFirst({
+                    skip: 1
+                }))?.id
             }
         })
-        var mean = [0, 0];
-        var std_dev = [0, 0];
-        for (let i = 0; i < prices1.length; i++) {
-            mean[0] += prices1[i].price;
-            mean[1] += prices2[i].price;
-        }
-        mean[0] /= prices1.length; 
-        mean[1] /= prices2.length;
-        for(let i = 0; i < prices1.length; i++) {
-            std_dev[0] += (prices1[i].price - mean[0]) ** 2;
-            std_dev[1] += (prices2[i].price - mean[1]) ** 2;
-        }
-        std_dev[0] = Math.sqrt(std_dev[0] / prices1.length);
-        std_dev[1] = Math.sqrt(std_dev[1] / prices2.length);
-        var volatility = std_dev[0] + std_dev[1];
-        console.log("vol : ", volatility);
 
-        //volume trade
-        const volume24h = await prisma.dynamicData.findFirst();
-        console.log("vol trade :", volume24h);
-
-        //total liquidity and lifetime volume
-        var totalLiquidity = (await prisma.dynamicData.findFirst())?.totalLiquidity;
-        var lifetimeVolume = (await prisma.dynamicData.findFirst())?.lifetimeVolume;
-
-        // old to new price raio for impermanent loss
-        var old_price  = await prisma.price.findMany({
-            skip: 2,
-            take: 2
-        });
-        var new_price = await prisma.price.findMany({
-            take: 2
-        });
-        // console.log("old price : ", old);
-        console.log("new price : ", new_price);
-        
-        var del_p = 0;
-
-        for (let i = 0; i < 2; i++) {
-            if(old_price != null){
-                del_p += new_price[i].price / old_price[i].price;
+        //check that there is atleast one entry in db
+        if(prices1.length != 0 || prices2.length != 0) {
+            var mean = [0, 0];
+            var std_dev = [0, 0];
+            for (let i = 0; i < prices1.length; i++) {
+                mean[0] += prices1[i].price;
+                mean[1] += prices2[i].price;
             }
-        }
+            mean[0] /= prices1.length; 
+            mean[1] /= prices2.length;
+            for(let i = 0; i < prices1.length; i++) {
+                std_dev[0] += (prices1[i].price - mean[0]) ** 2;
+                std_dev[1] += (prices2[i].price - mean[1]) ** 2;
+            }
+            std_dev[0] = Math.sqrt(std_dev[0] / prices1.length);
+            std_dev[1] = Math.sqrt(std_dev[1] / prices2.length);
 
-        var impermanent_loss = 1 - Math.sqrt(Math.pow((1 + del_p)/2, -0.5))
+            //volatility
+            volatility = std_dev[0] + std_dev[1];
+
+            //volume trade
+            volume24h = (await prisma.dynamicData.findFirst())!.volume24h;
+            // console.log("vol trade :", volume24h);
+
+            //total liquidity and lifetime volume
+            totalLiquidity = (await prisma.dynamicData.findFirst())!.totalLiquidity;
+            lifetimeVolume = (await prisma.dynamicData.findFirst())!.lifetimeVolume;
+
+            // old to new price raio for impermanent loss
+            var old_price  = await prisma.price.findMany({
+                skip: 2,
+                take: 2
+            });
+            var new_price = await prisma.price.findMany({
+                take: 2
+            });
+            // console.log("old price : ", old);
+            // console.log("new price : ", new_price);
+            
+            var del_p = 0;
+
+            for (let i = 0; i < 2; i++) {
+                if(old_price != null && new_price != null) {
+                    del_p += new_price[i].price / old_price[i].price;
+                }
+            }
+
+            //impermanent loss
+            if(del_p != 0) impermanent_loss =  1 - Math.sqrt(Math.pow((1 + del_p)/2, -0.5));
+            else impermanent_loss = 0;
+        }
+        
+        console.log("volatility : ", volatility);
+        console.log("volume24h : ", volume24h);
+        console.log("totalLiquidity : ", totalLiquidity);
+        console.log("lifetimeVolume : ", lifetimeVolume);
+        console.log("impermanent_loss : ", impermanent_loss);
 
         return {
             volatility: Number(volatility),
@@ -117,5 +124,5 @@ async function getData(URL: string) {
     }
 }
 
-getData(URL);
+// getData(URL);
 export default getData;

@@ -18,11 +18,10 @@ app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
-
+// api endpoint give for reference
 const URL = `https://test-api-v3.balancer.fi/?query=query {
   poolGetPool(id:"${process.env.POOL_ADDRESS}", chain:SEPOLIA){
     poolTokens {
-      balance
       name
       address
       priceRate
@@ -50,7 +49,8 @@ async function main() {
         day_ct++;
     }, 86400);
 
-    app.get("/get-data", async (req, res) => {
+    //data request coming from the client
+    app.get("/", async (req, res) => {
       const curr_values = await getData(URL);
       max_vol = Math.max(max_vol, curr_values!.volatility);
       avg_vol = curr_values!.lifetimeVolume / day_ct;
@@ -64,8 +64,6 @@ async function main() {
 
       // dynamic fees calculation
       var dynamic_fees = w1 * volatility_f + w2 * liquidity_percentage_f + w3 * trad_vol_f + w4 * impermanent_loss_f;
-
-      
 
       res.send({
         "dynamic_fees": dynamic_fees

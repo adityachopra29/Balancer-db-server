@@ -4,7 +4,7 @@ import { parse } from "path";
 
 const prisma : PrismaClient = new PrismaClient();
 
-`{
+const sampleData =  `{
     "data": {
         "poolGetPool": {
             "poolTokens": [
@@ -30,22 +30,8 @@ const prisma : PrismaClient = new PrismaClient();
     }
 }`
 
-const url = `https://test-api-v3.balancer.fi/?query=query {
-    poolGetPool(id:"0xEA34209c9c86b358Ebf9C92156aA8D12b81508B6", chain:SEPOLIA){
-      poolTokens {
-        balance
-        name
-        address
-        priceRate
-      }
-      dynamicData{
-        totalLiquidity
-        volume24h
-        lifetimeVolume
-  }}}`
 
 type Token = {
-    balance: string;
     name: string;
     address: string;
     priceRate: number;
@@ -63,22 +49,25 @@ type Pool = {
 async function setData(url:string) {
     try {
         const response = await axios.get(url);
-        console.log(response.data);
+        // console.log(response.data);
         const pool: Pool = response.data.data.poolGetPool;
-        console.log(pool)
+        // console.log(pool)
         var poolPrices = [parseFloat(response.data.data.poolGetPool.poolTokens[0].priceRate), parseFloat(response.data.data.poolGetPool.poolTokens[1].priceRate)]
 
         const tokenAdresses = await prisma.token.findMany();
         console.log(tokenAdresses);
         
+        
         const addPriceData = await prisma.price.createMany({
             data: [{
-                tokenId: tokenAdresses[0].id,
+                tokenId: (await prisma.token.findFirst())!.id,
                 date: new Date(),
                 price: poolPrices[0]
             }, 
             {
-                tokenId: tokenAdresses[1].id,
+                tokenId: (await prisma.token.findFirst({
+                    skip: 1
+                }))!.id,
                 date: new Date(),
                 price: poolPrices[1]
             }
@@ -102,6 +91,6 @@ async function setData(url:string) {
 
 }
 
-setData(url)
+// setData(url)
 
 export default setData;
